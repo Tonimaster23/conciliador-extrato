@@ -1,0 +1,598 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Conciliador de Extrato</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: ferramenta de escritório contábil — cabeçalho com perfil do extrato, faixa de conferência, abas de trabalho com tabelas largas */
+:root{
+  --bg:#f3f5f7; --panel:#ffffff; --fg:#17212b; --muted:#5b6977; --line:#d9dfe5;
+  --accent:#1f5f8b; --accent-soft:#e3eef6; --in:#1d7a4f; --out:#b23a3a; --warn:#9a6a00; --warn-soft:#fbf1d9; --ok-soft:#e2f3ea;
+  --f-display:"Archivo",system-ui,sans-serif; --f-body:"IBM Plex Sans",system-ui,sans-serif; --f-mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#11171d; --panel:#18212a; --fg:#e4eaf0; --muted:#93a2b1; --line:#2b3743;
+  --accent:#6fb0de; --accent-soft:#1d3142; --in:#5cc48f; --out:#ec8181; --warn:#e6b84f; --warn-soft:#3a2f14; --ok-soft:#173326; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#11171d; --panel:#18212a; --fg:#e4eaf0; --muted:#93a2b1; --line:#2b3743;
+  --accent:#6fb0de; --accent-soft:#1d3142; --in:#5cc48f; --out:#ec8181; --warn:#e6b84f; --warn-soft:#3a2f14; --ok-soft:#173326; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:14px;line-height:1.5}
+.wrap{max-width:1240px;margin:0 auto;padding-block:24px 48px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:20px}
+header{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-end;gap:16px}
+h1{font-family:var(--f-display);font-weight:700;font-size:1.7rem;margin:0;letter-spacing:-.01em;text-wrap:balance}
+.sub{color:var(--muted);margin:4px 0 0;max-width:70ch}
+.example{display:inline-block;font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;background:var(--warn-soft);color:var(--warn);padding:2px 8px;border-radius:3px;font-weight:600}
+.strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));background:var(--panel);border:1px solid var(--line);border-radius:6px}
+.strip>div{padding:12px 16px;border-right:1px solid var(--line);min-width:0}
+.strip>div:last-child{border-right:0}
+.k{font-size:.72rem;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)}
+.v{font-family:var(--f-mono);font-size:1.15rem;font-variant-numeric:tabular-nums;font-weight:500}
+.pill{display:inline-block;font-size:.75rem;padding:2px 8px;border-radius:99px;font-weight:600;font-family:var(--f-body)}
+.pill.ok{background:var(--ok-soft);color:var(--in)}
+.pill.bad{background:var(--warn-soft);color:var(--warn)}
+.pill.neutral{background:var(--accent-soft);color:var(--accent)}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.tabs button{font:600 .9rem var(--f-body);background:none;border:0;border-bottom:2px solid transparent;color:var(--muted);padding:10px 14px;cursor:pointer;margin-bottom:-1px}
+.tabs button[aria-selected="true"]{color:var(--accent);border-bottom-color:var(--accent)}
+button:focus-visible,select:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:16px;display:flex;flex-direction:column;gap:14px;min-width:0}
+.panel h2{font-family:var(--f-display);font-size:1.05rem;margin:0;font-weight:600}
+.hint{color:var(--muted);font-size:.85rem;margin:0;max-width:80ch}
+.hint code{font-family:var(--f-mono);font-size:.8rem;color:var(--fg)}
+.scroll{overflow-x:auto;border:1px solid var(--line);border-radius:4px}
+table{border-collapse:collapse;width:100%;font-size:.86rem}
+th{text-align:left;font-size:.7rem;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:600;padding:8px 10px;border-bottom:1px solid var(--line);background:var(--bg);white-space:nowrap}
+td{padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:middle}
+tr:last-child td{border-bottom:0}
+td.num,th.num{text-align:right;font-family:var(--f-mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+td.mono{font-family:var(--f-mono);font-size:.82rem;white-space:nowrap}
+.cod{font-family:var(--f-mono);font-size:.75rem;color:var(--muted);margin-right:6px}
+.comp{font-size:.8rem;color:var(--accent);font-weight:500}
+.in{color:var(--in)} .out{color:var(--out)}
+tr.pend td{background:var(--warn-soft)}
+.acc{white-space:nowrap}
+.acc code{font-family:var(--f-mono);font-weight:500;color:var(--accent);margin-right:6px}
+.tag{font-size:.75rem;color:var(--muted)}
+.tag.p{color:var(--warn);font-weight:600}
+select,input[type=text],textarea{font:inherit;color:var(--fg);background:var(--panel);border:1px solid var(--line);border-radius:4px;padding:5px 8px;max-width:100%}
+textarea{font-family:var(--f-mono);font-size:.8rem;width:100%;min-height:300px;line-height:1.55}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.btn{font:600 .85rem var(--f-body);border:1px solid var(--line);background:var(--panel);color:var(--fg);padding:7px 14px;border-radius:4px;cursor:pointer}
+.btn.primary{background:var(--accent);color:var(--panel);border-color:var(--accent)}
+.btn.small{padding:3px 9px;font-size:.75rem}
+.btn.icon{padding:4px 9px;color:var(--muted)}
+label.field{display:flex;flex-direction:column;gap:4px;font-size:.78rem;color:var(--muted)}
+.flow{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.flow div{border:1px solid var(--line);border-radius:4px;padding:10px 12px;font-size:.85rem}
+.flow b{display:block;font-family:var(--f-display);font-weight:600;margin-bottom:2px}
+@media (max-width:640px){.flow{grid-template-columns:1fr}.strip>div{border-right:0;border-bottom:1px solid var(--line)}}
+.ocr{border:1px dashed var(--accent);background:var(--accent-soft);border-radius:6px;padding:12px 14px;display:flex;flex-direction:column;gap:6px}
+.ocr-t{font-family:var(--f-display);font-weight:600}
+.ocr .hint{max-width:62ch}
+label.btn{display:inline-block}
+#ocrStatus:empty{display:none}
+#ocrStatus.err{color:var(--out)}
+#toast{position:fixed;bottom:calc(20px + env(safe-area-inset-bottom,0px));left:50%;transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:8px 16px;border-radius:4px;font-size:.85rem;max-width:calc(100% - 32px)}
+@media (prefers-reduced-motion:no-preference){.tabs button{transition:color .15s}}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <div>
+      <span class="example">Exemplo</span>
+      <h1>Conciliador de Extrato Bancário</h1>
+      <p class="sub">Lê o extrato, aplica a lista de regras e gera os lançamentos de débito e crédito para importar na Domínio.</p>
+    </div>
+    <div class="row">
+      <label class="field">Extrato
+        <select id="perfil"></select></label>
+      <button class="btn" id="novoPerfil">Novo extrato</button>
+    </div>
+  </header>
+
+  <section class="strip" aria-label="Resumo">
+    <div><div class="k">Lançamentos</div><div class="v" id="sLanc">0</div></div>
+    <div><div class="k">Pendentes</div><div class="v" id="sPend">0</div></div>
+    <div><div class="k">Entradas</div><div class="v in" id="sIn">0</div></div>
+    <div><div class="k">Saídas</div><div class="v out" id="sOut">0</div></div>
+    <div><div class="k">Conferência de saldo</div><div class="v" id="sSaldo">—</div></div>
+  </section>
+
+  <nav class="tabs" role="tablist">
+    <button role="tab" aria-selected="true" data-tab="lanc" id="tab-lanc">Lançamentos</button>
+    <button role="tab" aria-selected="false" data-tab="regras" id="tab-regras">Lista de regras</button>
+    <button role="tab" aria-selected="false" data-tab="plano" id="tab-plano">Plano de contas</button>
+    <button role="tab" aria-selected="false" data-tab="extrato" id="tab-extrato">Extrato</button>
+  </nav>
+
+  <section class="panel" data-pane="lanc">
+    <div class="row" style="justify-content:space-between">
+      <h2>Lançamentos gerados</h2>
+      <div class="row">
+        <label class="field">Conta do banco
+          <select id="bankAcc"></select></label>
+        <button class="btn" id="copyCsv">Copiar</button><button class="btn primary" id="baixarTxt">Baixar arquivo para a Domínio</button>
+      </div>
+    </div>
+    <div class="flow">
+      <div><b>Entrou dinheiro no banco</b>Débito na conta do banco, crédito na contrapartida da regra.</div>
+      <div><b>Saiu dinheiro do banco</b>Débito na contrapartida da regra, crédito na conta do banco.</div>
+    </div>
+    <div class="scroll"><table>
+      <thead><tr><th>Data</th><th>Histórico e favorecido</th><th>Documento</th><th class="num">Valor</th><th>Débito</th><th>Crédito</th><th>Regra</th></tr></thead>
+      <tbody id="lancBody"></tbody>
+    </table></div>
+    <p class="hint">Linhas em amarelo não bateram com nenhuma regra. Escolha a contrapartida ali mesmo, ou use "Criar regra" para que o mesmo movimento seja classificado sozinho nos próximos extratos.</p>
+    <details>
+      <summary class="hint" style="cursor:pointer">Ver o arquivo de importação</summary>
+      <p class="hint">Layout: <code>Data;Débito;Crédito;Valor;Histórico</code>, separado por ponto e vírgula. Ajuste o leiaute de importação na Domínio para essa ordem de campos.</p>
+      <textarea id="csvOut" readonly style="min-height:200px"></textarea>
+    </details>
+  </section>
+
+  <section class="panel" data-pane="regras" hidden>
+    <h2>Lista de regras</h2>
+    <p class="hint">Uma regra pode usar o código do histórico do banco (no BB, 363 é conta de telefone, 109 é título, 250 é folha), um texto que aparece no histórico ou no favorecido, ou os dois juntos. Vale a primeira regra que bater, então deixe as mais específicas em cima.</p>
+    <div class="scroll"><table>
+      <thead><tr><th>#</th><th>Código</th><th>Histórico ou favorecido contém</th><th>Movimento</th><th>Contrapartida</th><th>Histórico do lançamento</th><th class="num">Usos</th><th></th></tr></thead>
+      <tbody id="rulesBody"></tbody>
+    </table></div>
+    <div class="row"><button class="btn" id="addRule">Adicionar regra</button><button class="btn" id="resetAll">Voltar aos exemplos</button><button class="btn" id="exportar">Salvar regras em arquivo</button><label class="btn" for="importar">Abrir arquivo de regras</label><input type="file" id="importar" accept=".json" hidden></div>
+    <p class="hint">As regras ficam salvas só neste navegador. Para levar para outro computador ou fazer backup, use "Salvar regras em arquivo".</p>
+    <div class="row"><label class="field">Copiar as regras de outro extrato<select id="copiarDe"></select></label><button class="btn" id="copiarBtn">Substituir regras deste extrato</button></div>
+  </section>
+
+  <section class="panel" data-pane="plano" hidden>
+    <h2>Plano de contas</h2>
+    <p class="hint">Códigos reduzidos ilustrativos, no formato do plano da Domínio. Troque pelos códigos do plano da empresa antes de importar. O plano vale para todos os extratos.</p>
+    <div class="scroll"><table>
+      <thead><tr><th>Reduzido</th><th>Classificação</th><th>Descrição</th><th></th></tr></thead>
+      <tbody id="planoBody"></tbody>
+    </table></div>
+    <div class="row"><button class="btn" id="addConta">Adicionar conta</button></div>
+  </section>
+
+  <section class="panel" data-pane="extrato" hidden>
+    <h2>Extrato</h2>
+    <p class="hint">Uma linha por movimento: <code>data | histórico | documento | valor</code>. O documento é opcional. Saída com D ou sinal de menos (240,00 D, 360,00-, -360,00), entrada com C ou sem sinal. Uma linha sem barra logo abaixo de um movimento é o favorecido dele. Linhas de SALDO servem só para conferência. Também aceita arquivo OFX ou CSV do banco.</p>
+    <div class="row">
+      <label class="field">Nome do extrato<input type="text" id="nomePerfil" size="28"></label>
+      <label class="field">Ano (para datas sem ano)<input type="text" id="ano" size="6"></label>
+      <label class="field">Importar OFX ou CSV<input type="file" id="file" accept=".ofx,.csv,.txt"></label>
+    </div>
+    <div class="ocr" id="ocrBox">
+      <div class="row" style="justify-content:space-between">
+        <div>
+          <b class="ocr-t">Ler foto ou print do extrato</b>
+          <p class="hint">JPG, WEBP ou PNG. Se o extrato tiver várias páginas, selecione todas de uma vez, na ordem. O Claude transcreve as linhas pela API, e a leitura vira um extrato novo que usa as regras do extrato atual.</p>
+        </div>
+        <div class="row">
+          <label class="btn primary" for="img" id="imgBtn">Escolher imagens</label>
+          <input type="file" id="img" accept="image/jpeg,image/webp,image/png" multiple hidden>
+          <button class="btn" id="stopOcr" hidden>Parar</button>
+        </div>
+      </div>
+      <label class="field" style="max-width:260px">Senha de leitura<input type="password" id="senha" autocomplete="current-password" placeholder="a mesma configurada na Vercel"></label>
+      <p class="hint" id="ocrStatus" aria-live="polite"></p>
+    </div>
+    <textarea id="extratoTxt" spellcheck="false"></textarea>
+    <div class="row"><button class="btn primary" data-tab="lanc">Gerar lançamentos</button><span class="hint">As alterações no texto já são aplicadas na hora.</span></div>
+  </section>
+</div>
+<div id="toast" hidden></div>
+
+<script>
+const ITAU_EXTRATO = `10/06 | SALDO ANTERIOR | 8.694,57
+11/06 | CXE 001156 SAQUE | 360,00-
+11/06 | CXE TEF 9374.32604-0 | 1.500,00-
+11/06 | SAQUE 24H 03363462 | 50,00-
+12/06 | CH COMPENSADO 001 000660 | 20.500,00-
+12/06 | CH COMPENSADO 756 000656 | 200,33-
+12/06 | CXE TEF 7417.14639-1 | 1.200,00-
+12/06 | ELECTRONAUTO POSTO | 20,00-
+12/06 | ELECTRONCARREFOUR G | 1.500,00-
+12/06 | SISPAG R N REPR LTDA | 5.100,00
+12/06 | DEV CH000660 SEM FUNDOS | 20.500,00
+13/06 | ELECTRONCARREFOUR G | 1.200,00-
+13/06 | PAGTO CONTAS COM CARTAO | 8.000,00-
+14/06 | CXE 000992 SAQUE | 40,00-
+14/06 | CXE TEF 4606.00945-6/400 | 950,00-
+14/06 | CXE PAG TIT 176009198320 | 500,00-
+14/06 | SISPAG R N REPR LTDA | 16.200,00
+14/06 | CXE TEF 7417.13709-3 | 190,00
+17/06 | CH COMPENSADO 001 000660 | 20.500,00-
+17/06 | CXE 004481 SAQUE | 150,00-
+17/06 | CXE TEF 7417.13709-3 | 400,00-
+17/06 | CXE 000398 SAQUE 15/06 | 500,00-
+17/06 | ELECTRONPIZZARIA MI | 33,80-
+17/06 | SEG CARTAO PERSON 01/12 | 3,38-
+17/06 | SISPAG R N REPR LTDA | 7.000,00
+18/06 | CXE DOC 636647 | 1.000,00-
+19/06 | ELECTRONAUTO POSTO | 37,00-
+25/06 | CXE 000133 SAQUE | 700,00-
+25/06 | CXE TEF 7417.13709-3 | 750,00
+01/07 | ENCARGOS CONTA CORRENTE | 1,10-
+01/07 | ENCARGOS CONTA CORRENTE | 1,41-
+01/07 | IOF | 6,37-
+02/07 | TAR MULTICTA MENS 06/13 | 54,00-
+03/07 | CH COMPENSADO 237 000648 | 250,00-
+05/07 | CEP/JUROS | 61,90-
+08/07 | CEI 000188 DINHEIRO | 615,00
+08/07 | ADIANT.DEPOSITANTE 03/06 | 44,00-
+08/07 | SALDO FINAL | 713,72-`;
+
+const BB_EXTRATO = `28/12/2018 | 000 Saldo Anterior | 240,00 C
+02/01/2019 | 102 Cheque Compensado | 556.202 | 240,00 D
+07/01/2019 | 870 Transferência recebida | 550.404.000.073.001 | 1.000,00 C
+07/01 0404 73001-7 PREF MUN DE VA
+15/01/2019 | 363 Pagto conta telefone | 11.501 | 197,50 D
+TELEMAR RJ (OI FIXO)
+15/01/2019 | 363 Pagto conta telefone | 11.502 | 332,34 D
+TELEMAR RJ (OI FIXO)
+18/01/2019 | 976 TED-Crédito em Conta | 8.172.249 | 547.500,00 C
+104 0945 29076130000190 PREFEITURA MUN
+18/01/2019 | 109 Pagamento de Título | 11.801 | 290,00 D
+CERTISIGN CERT DIGITAL S
+21/01/2019 | 345 BB CP Admin Supremo | 1.200.070 | 540.000,00 D
+21/01/2019 | 345 BB CP Admin Supremo | 70 | 7.680,16 D
+22/01/2019 | 002 Cheque | 556.216 | 1.500,00 D
+22/01/2019 | 363 Pagto conta telefone | 12.201 | 47,18 D
+TELEMAR RJ (OI FIXO)
+22/01/2019 | 363 Pagto conta telefone | 12.202 | 351,67 D
+TELEMAR RJ (OI FIXO)
+22/01/2019 | 363 Pagto conta telefone | 12.203 | 298,49 D
+TELEMAR RJ (OI FIXO)
+22/01/2019 | 363 Pagto conta telefone | 12.204 | 205,38 D
+TELEMAR RJ (OI FIXO)
+22/01/2019 | 109 Pagamento de Título | 12.205 | 6.000,00 D
+IBAM INST BRASIL ADM MUNICIPAL
+22/01/2019 | 109 Pagamento de Título | 12.206 | 453,00 D
+CONSELHO REGIONAL DE CONTABILI
+22/01/2019 | 109 Pagamento de Título | 12.207 | 68,10 D
+MINISTERIO DA JUSTICA - DPTO.
+22/01/2019 | 109 Pagamento de Título | 12.208 | 68,10 D
+MINISTERIO DA JUSTICA - DPTO.
+22/01/2019 | 109 Pagamento de Título | 12.209 | 68,10 D
+MINISTERIO DA JUSTICA - DPTO.
+22/01/2019 | 855 BB CP Admin Supremo | 70 | 9.060,02 C
+24/01/2019 | 250 Folha de Pagamento | 916 | 68.018,04 D
+24/01/2019 | 250 Folha de Pagamento | 917 | 47.500,14 D
+24/01/2019 | 250 Folha de Pagamento | 918 | 1.531,41 D
+24/01/2019 | 250 Folha de Pagamento | 919 | 31.153,97 D
+24/01/2019 | 250 Folha de Pagamento | 920 | 82.405,23 D
+24/01/2019 | 855 BB CP Admin Supremo | 70 | 230.608,79 C
+24/01/2019 | SALDO | 0,00 C
+25/01/2019 | 002 Cheque | 556.217 | 142,40 D
+25/01/2019 | 002 Cheque | 556.225 | 600,00 D
+25/01/2019 | 002 Cheque | 556.226 | 600,00 D
+25/01/2019 | 002 Cheque | 556.227 | 600,00 D
+25/01/2019 | 002 Cheque | 556.228 | 633,20 D
+25/01/2019 | 002 Cheque | 556.229 | 3.529,44 D
+25/01/2019 | 002 Cheque | 556.230 | 1.728,65 D
+25/01/2019 | 470 Transferência enviada | 550.404.000.012.416 | 38,76 D
+25/01 0404 12416-8 S F P M E C A
+25/01/2019 | 470 Transferência enviada | 550.404.000.015.045 | 26.894,27 D
+25/01 0404 15045-2 PREF MUN DE VA`;
+
+const PLANO = [
+  ["5","1.1.1.01.001","Caixa geral"],
+  ["7","1.1.1.02.001","Banco Itaú c/c 67049-1"],
+  ["8","1.1.1.02.002","Banco do Brasil c/c 38900-5"],
+  ["15","1.1.1.03.001","Aplicação BB CP Admin Supremo"],
+  ["25","1.1.2.01.001","Clientes"],
+  ["90","1.1.9.01.001","Transferências a identificar"],
+  ["210","2.1.1.01.001","Fornecedores"],
+  ["225","2.1.1.05.001","Cartão de crédito a pagar"],
+  ["260","2.1.2.01.001","Salários a pagar"],
+  ["380","3.2.1.05.001","Despesas bancárias"],
+  ["381","3.2.1.05.002","IOF"],
+  ["382","3.2.1.05.003","Juros passivos"],
+  ["420","3.2.1.02.010","Combustíveis e lubrificantes"],
+  ["421","3.2.1.02.011","Material de consumo"],
+  ["422","3.2.1.02.012","Refeições e lanches"],
+  ["430","3.2.1.02.020","Seguros"],
+  ["440","3.2.1.02.030","Telefone"],
+  ["441","3.2.1.02.031","Certificado digital"],
+  ["442","3.2.1.02.032","Consultoria e assessoria"],
+  ["443","3.2.1.02.033","Anuidades de conselhos de classe"],
+  ["444","3.2.1.02.034","Taxas e emolumentos"]
+];
+// [código, contém, movimento S/E/A, contrapartida, histórico]
+const ITAU_RULES = [
+  ["","SAQUE","S","5","Saque p/ caixa"],
+  ["","CEI","E","5","Depósito em dinheiro"],
+  ["","CH COMPENSADO","S","210","Pagto fornecedor cheque"],
+  ["","DEV CH","E","210","Devolução de cheque sem fundos"],
+  ["","PAG TIT","S","210","Pagto de título"],
+  ["","SISPAG R N REPR","E","25","Receb. R N Representações"],
+  ["","TEF","A","90","Transferência eletrônica"],
+  ["","POSTO","S","420","Combustível"],
+  ["","CARREFOUR","S","421","Compra material de consumo"],
+  ["","PIZZARIA","S","422","Refeição"],
+  ["","PAGTO CONTAS COM CARTAO","S","225","Pagto fatura cartão"],
+  ["","SEG CARTAO","S","430","Seguro cartão"],
+  ["","ENCARGOS","S","380","Encargos conta corrente"],
+  ["","TAR ","S","380","Tarifa bancária"],
+  ["","IOF","S","381","IOF s/ conta corrente"],
+  ["","JUROS","S","382","Juros cheque especial"]
+];
+const BB_RULES = [
+  ["345","","S","15","Aplicação automática BB CP Admin Supremo"],
+  ["855","","E","15","Resgate automático BB CP Admin Supremo"],
+  ["363","TELEMAR","S","440","Pagto conta telefone"],
+  ["109","CERTISIGN","S","441","Pagto certificado digital"],
+  ["109","IBAM","S","442","Pagto consultoria IBAM"],
+  ["109","CONSELHO REGIONAL DE CONTAB","S","443","Pagto anuidade CRC"],
+  ["109","MINISTERIO DA JUSTICA","S","444","Pagto taxa Ministério da Justiça"],
+  ["109","","S","210","Pagto de título"],
+  ["250","","S","260","Pagto folha de salários"],
+  ["002","","S","210","Pagto fornecedor cheque"],
+  ["102","","S","210","Pagto fornecedor cheque compensado"],
+  ["976","","E","25","Receb. TED cliente"],
+  ["870","","E","25","Receb. transferência cliente"]
+];
+
+const KEY="conciliador-extrato-v2";
+function fresh(){return{plano:PLANO.map(r=>[...r]),atual:1,perfis:[
+  {nome:"Itaú · Ag. 3935 C/C 67049-1",extrato:ITAU_EXTRATO,rules:ITAU_RULES.map(r=>[...r]),bank:"7",ano:"2013",manual:{}},
+  {nome:"Banco do Brasil · Ag. 404-9 C/C 38900-5",extrato:BB_EXTRATO,rules:BB_RULES.map(r=>[...r]),bank:"8",ano:"2019",manual:{}}
+]}}
+let S;
+try{S=JSON.parse(localStorage.getItem(KEY))||fresh()}catch(e){S=fresh()}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+const P=()=>S.perfis[S.atual];
+
+const $=id=>document.getElementById(id);
+const fmt=n=>n.toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2});
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const contaNome=c=>{const p=S.plano.find(x=>x[0]===c);return p?p[2]:"(conta não cadastrada)"};
+const accHtml=c=>`<span class="acc"><code>${esc(c)}</code>${esc(contaNome(c))}</span>`;
+
+function parseValor(s){
+  s=String(s).trim().replace(/\s/g,"").replace(/R\$/i,"");
+  if(!/\d/.test(s))return null;
+  const neg=/-$/.test(s)||/^-/.test(s)||/D$/i.test(s);
+  s=s.replace(/^-|-$|[CD]$/gi,"");
+  if(!/^[\d.,]+$/.test(s))return null;
+  if(s.includes(","))s=s.replace(/\./g,"").replace(",",".");
+  const n=parseFloat(s);return isNaN(n)?null:(neg?-n:n);
+}
+function parseTexto(txt){
+  const out={tx:[],abertura:null,final:null};let last=null;
+  txt.split(/\r?\n/).forEach(l=>{
+    if(!l.trim())return;
+    if(!/[|;\t]/.test(l)){ if(last)last.comp=(last.comp?last.comp+" ":"")+l.trim(); return; }
+    const parts=l.split(/\s*[|;\t]\s*/).map(x=>x.trim()).filter(x=>x!=="");
+    if(parts.length<3){last=null;return}
+    const data=parts[0],valor=parseValor(parts[parts.length-1]);
+    if(!/^\d{1,2}\/\d{1,2}/.test(data)||valor===null){last=null;return}
+    let hist=parts[1],doc=parts.length>3?parts.slice(2,-1).join(" "):"",cod="";
+    if(/^-+$/.test(doc))doc="";
+    const m=hist.match(/^(\d{3})\s+(.+)$/);if(m){cod=m[1];hist=m[2]}
+    const d=hist.toUpperCase().replace(/\s+/g," ");
+    if(/^SALDO ANTERIOR/.test(d)){out.abertura=valor;last=null;return}
+    if(/^SALDO FINAL/.test(d)){out.final=valor;last=null;return}
+    if(/^S ?A ?L ?D ?O\b/.test(d)){last=null;return}
+    last={data,cod,desc:hist,doc,comp:"",valor};out.tx.push(last);
+  });
+  return out;
+}
+function parseOFX(txt){
+  const out={tx:[],final:null};
+  const tag=(b,t)=>{const m=b.match(new RegExp("<"+t+">([^<\\r\\n]*)","i"));return m?m[1].trim():""};
+  txt.split(/<STMTTRN>/i).slice(1).forEach(b=>{
+    const dt=tag(b,"DTPOSTED"),v=parseFloat(tag(b,"TRNAMT").replace(",","."));
+    if(!dt||isNaN(v))return;
+    out.tx.push({data:`${dt.slice(6,8)}/${dt.slice(4,6)}/${dt.slice(0,4)}`,desc:tag(b,"MEMO")||tag(b,"NAME"),doc:tag(b,"CHECKNUM")||tag(b,"REFNUM"),comp:tag(b,"MEMO")&&tag(b,"NAME")?tag(b,"NAME"):"",valor:v});
+  });
+  const lb=txt.match(/<LEDGERBAL>[\s\S]*?<BALAMT>([^<\r\n]*)/i);
+  if(lb)out.final=parseFloat(lb[1].replace(",","."));
+  return out;
+}
+
+function aplicar(){
+  const p=P(),r=parseTexto(p.extrato),usos=p.rules.map(()=>0);
+  const linhas=r.tx.map((t,i)=>{
+    const alvo=(t.desc+" "+t.comp).toUpperCase(),entrada=t.valor>0;
+    let regra=null,idx=-1;
+    p.rules.forEach((ru,j)=>{
+      if(regra)return;
+      const cod=ru[0].trim(),termo=ru[1].trim().toUpperCase();
+      if(!cod&&!termo)return;
+      const okMov=ru[2]==="A"||(ru[2]==="E"&&entrada)||(ru[2]==="S"&&!entrada);
+      if(okMov&&(!cod||cod===t.cod)&&(!termo||alvo.includes(termo)))regra=ru,idx=j;
+    });
+    if(regra)usos[idx]++;
+    const k=[t.data,t.cod,t.desc,t.doc,t.valor,i].join("|");
+    const contra=regra?regra[3]:(p.manual[k]||"");
+    const hist=regra?regra[4]:t.desc;
+    const status=regra?`regra ${idx+1}`:(contra?"manual":"pendente");
+    return {...t,k,entrada,contra,hist,status,auto:!!regra,pend:!contra,deb:entrada?p.bank:contra,cred:entrada?contra:p.bank};
+  });
+  return {...r,linhas,usos};
+}
+
+function dataCompleta(d){const x=d.split("/");return `${x[0].padStart(2,"0")}/${x[1].padStart(2,"0")}/${x[2]||P().ano}`}
+function contaOptions(sel){return `<option value="">Escolha…</option>`+S.plano.map(p=>`<option value="${esc(p[0])}"${p[0]===sel?" selected":""}>${esc(p[0])} · ${esc(p[2])}</option>`).join("")}
+
+let ultimo=null;
+function render(){
+  const p=P(),r=aplicar(),L=r.linhas;ultimo=r;
+  $("perfil").innerHTML=S.perfis.map((x,i)=>`<option value="${i}"${i===S.atual?" selected":""}>${esc(x.nome)}</option>`).join("");
+  $("bankAcc").innerHTML=contaOptions(p.bank);
+  $("copiarDe").innerHTML=S.perfis.map((x,i)=>i===S.atual?"":`<option value="${i}">${esc(x.nome)} (${x.rules.length} regras)</option>`).join("");
+  $("lancBody").innerHTML=L.length?L.map((l,i)=>{
+    const sel=`<select data-k="${esc(l.k)}" aria-label="Contrapartida">${contaOptions(l.contra)}</select>`;
+    const debCell=l.entrada||l.auto?accHtml(l.deb):sel;
+    const credCell=!l.entrada||l.auto?accHtml(l.cred):sel;
+    const stat=l.pend?`<span class="tag p">pendente</span><br><button class="btn small" data-mk="${i}">Criar regra</button>`:`<span class="tag">${esc(l.status)}</span>`;
+    return `<tr class="${l.pend?"pend":""}"><td class="mono">${esc(dataCompleta(l.data))}</td>
+    <td>${l.cod?`<span class="cod">${esc(l.cod)}</span>`:""}${esc(l.desc)}${l.comp?`<div class="comp">${esc(l.comp)}</div>`:""}${l.auto?`<div class="tag">→ ${esc(l.hist)}</div>`:""}</td>
+    <td class="mono">${esc(l.doc||"")}</td>
+    <td class="num ${l.entrada?"in":"out"}">${l.entrada?"+":"−"}${fmt(Math.abs(l.valor))}</td><td>${debCell}</td><td>${credCell}</td><td>${stat}</td></tr>`}).join(""):`<tr><td colspan="7" class="hint">Nenhum movimento lido. Cole o extrato na aba Extrato.</td></tr>`;
+  document.querySelectorAll("#lancBody select").forEach(s=>s.onchange=()=>{if(s.value)p.manual[s.dataset.k]=s.value;else delete p.manual[s.dataset.k];save();render()});
+
+  const ent=L.filter(l=>l.entrada).reduce((a,l)=>a+l.valor,0),sai=L.filter(l=>!l.entrada).reduce((a,l)=>a+l.valor,0),np=L.filter(l=>l.pend).length;
+  $("sLanc").textContent=L.length;
+  $("sPend").innerHTML=np?`<span class="pill bad">${np} pendente${np>1?"s":""}</span>`:`<span class="pill ok">nenhum</span>`;
+  $("sIn").textContent=fmt(ent);$("sOut").textContent=fmt(Math.abs(sai));
+  if(r.abertura!==null&&r.final!==null){
+    const calc=Math.round((r.abertura+ent+sai)*100)/100,ok=Math.abs(calc-r.final)<0.005;
+    $("sSaldo").innerHTML=ok?`<span class="pill ok">bate: ${fmt(calc)}</span>`:`<span class="pill bad">difere ${fmt(calc-r.final)}</span>`;
+  }else if(r.abertura!==null){
+    $("sSaldo").innerHTML=`<span class="pill neutral">calculado ${fmt(Math.round((r.abertura+ent+sai)*100)/100)}</span>`;
+  }else $("sSaldo").textContent="sem saldo";
+
+  $("csvOut").value=["Data;Debito;Credito;Valor;Historico",...L.filter(l=>!l.pend).map(l=>{
+    const h=[l.hist,l.comp||(l.auto?l.desc:""),l.doc?"doc "+l.doc:""].filter(Boolean).join(" - ").replace(/;/g,",");
+    return [dataCompleta(l.data),l.deb,l.cred,fmt(Math.abs(l.valor)).replace(/\./g,""),h].join(";")})].join("\n");
+
+  $("rulesBody").innerHTML=p.rules.map((ru,i)=>`<tr>
+    <td class="mono">${i+1}</td>
+    <td><input type="text" id="r${i}a" data-i="${i}" data-f="0" value="${esc(ru[0])}" size="4" placeholder="—"></td>
+    <td><input type="text" id="r${i}b" data-i="${i}" data-f="1" value="${esc(ru[1])}" size="22" placeholder="qualquer"></td>
+    <td><select id="r${i}c" data-i="${i}" data-f="2"><option value="A"${ru[2]==="A"?" selected":""}>Entrada ou saída</option><option value="E"${ru[2]==="E"?" selected":""}>Só entrada</option><option value="S"${ru[2]==="S"?" selected":""}>Só saída</option></select></td>
+    <td><select id="r${i}d" data-i="${i}" data-f="3">${contaOptions(ru[3])}</select></td>
+    <td><input type="text" id="r${i}e" data-i="${i}" data-f="4" value="${esc(ru[4])}" size="26"></td>
+    <td class="num">${r.usos[i]}</td>
+    <td><div class="row" style="flex-wrap:nowrap;gap:4px"><button class="btn icon" data-up="${i}" aria-label="Subir regra">↑</button><button class="btn icon" data-del="${i}" aria-label="Remover regra">×</button></div></td></tr>`).join("");
+  $("planoBody").innerHTML=S.plano.map((x,i)=>`<tr>
+    <td><input type="text" id="p${i}a" data-p="${i}" data-f="0" value="${esc(x[0])}" size="6"></td>
+    <td><input type="text" id="p${i}b" data-p="${i}" data-f="1" value="${esc(x[1])}" size="14"></td>
+    <td><input type="text" id="p${i}c" data-p="${i}" data-f="2" value="${esc(x[2])}" size="32"></td>
+    <td><button class="btn icon" data-pdel="${i}" aria-label="Remover conta">×</button></td></tr>`).join("");
+  if(document.activeElement!==$("extratoTxt"))$("extratoTxt").value=p.extrato;
+  if(document.activeElement!==$("nomePerfil"))$("nomePerfil").value=p.nome;
+  if(document.activeElement!==$("ano"))$("ano").value=p.ano;
+}
+function irPara(tab){document.querySelectorAll(".tabs button").forEach(b=>b.setAttribute("aria-selected",b.dataset.tab===tab));document.querySelectorAll("[data-pane]").forEach(x=>x.hidden=x.dataset.pane!==tab)}
+
+document.addEventListener("change",e=>{
+  const t=e.target;
+  if(t.dataset.i!==undefined){P().rules[+t.dataset.i][+t.dataset.f]=t.value;save();render();$(t.id)?.focus()}
+  else if(t.dataset.p!==undefined){S.plano[+t.dataset.p][+t.dataset.f]=t.value;save();render()}
+});
+document.addEventListener("click",e=>{
+  const t=e.target.closest("button");if(!t)return;const R=P().rules;
+  if(t.dataset.del!==undefined){R.splice(+t.dataset.del,1);save();render()}
+  if(t.dataset.up!==undefined){const i=+t.dataset.up;if(i>0){[R[i-1],R[i]]=[R[i],R[i-1]];save();render()}}
+  if(t.dataset.pdel!==undefined){S.plano.splice(+t.dataset.pdel,1);save();render()}
+  if(t.dataset.mk!==undefined){
+    const l=ultimo.linhas[+t.dataset.mk];
+    const termo=(l.comp||(l.cod?"":l.desc)).replace(/^\d{2}\/\d{2}\s+\d{4}\s+\S+\s+/,"").slice(0,30);
+    R.unshift([l.cod,termo,l.entrada?"E":"S",l.contra||"",l.desc]);save();render();irPara("regras");$("r0d").focus();
+    toast("Regra criada no topo da lista. Escolha a contrapartida");
+  }
+  if(t.dataset.tab)irPara(t.dataset.tab);
+});
+$("perfil").onchange=e=>{S.atual=+e.target.value;save();render()};
+$("novoPerfil").onclick=()=>{S.perfis.push({nome:"Novo extrato",extrato:"",rules:P().rules.map(r=>[...r]),bank:P().bank,ano:String(new Date().getFullYear()),manual:{}});S.atual=S.perfis.length-1;save();render();irPara("extrato");$("extratoTxt").focus();toast("Extrato criado com as regras do atual. Cole ou importe o extrato")};
+$("copiarBtn").onclick=()=>{const i=+$("copiarDe").value;if(isNaN(i)||i===S.atual)return;const f=S.perfis[i];P().rules=f.rules.map(r=>[...r]);P().bank=f.bank;P().manual={};save();render();toast(`Regras copiadas de "${f.nome}"`)};
+$("addRule").onclick=()=>{P().rules.push(["","","A","",""]);save();render()};
+$("addConta").onclick=()=>{S.plano.push(["","",""]);save();render()};
+$("resetAll").onclick=()=>{S=fresh();save();render();toast("Exemplos restaurados")};
+$("bankAcc").onchange=e=>{P().bank=e.target.value;save();render()};
+$("extratoTxt").oninput=e=>{P().extrato=e.target.value;P().manual={};save();render()};
+$("nomePerfil").oninput=e=>{P().nome=e.target.value||"Sem nome";save();render()};
+$("ano").oninput=e=>{P().ano=e.target.value;save();render()};
+$("file").onchange=e=>{
+  const f=e.target.files[0];if(!f)return;
+  const rd=new FileReader();rd.onload=()=>{
+    const txt=rd.result,p=P();
+    if(/<OFX>|<STMTTRN>/i.test(txt)){const o=parseOFX(txt);
+      p.extrato=o.tx.map(t=>`${t.data} | ${t.desc} | ${t.doc||"-"} | ${fmt(Math.abs(t.valor))} ${t.valor<0?"D":"C"}`+(t.comp?`\n${t.comp}`:"")).join("\n")
+        +(o.final!==null&&o.tx.length?`\n${o.tx[o.tx.length-1].data} | SALDO FINAL | ${fmt(Math.abs(o.final))} ${o.final<0?"D":"C"}`:"");
+    }else p.extrato=txt;
+    p.manual={};save();$("extratoTxt").value=p.extrato;render();irPara("lanc");toast(`${parseTexto(p.extrato).tx.length} movimentos importados`);
+  };rd.readAsText(f,"ISO-8859-1");
+};
+$("copyCsv").onclick=()=>{
+  const v=$("csvOut").value;
+  navigator.clipboard.writeText(v).then(()=>toast("Copiado. Cole num .txt e importe na Domínio")).catch(()=>{$("csvOut").closest("details").open=true;$("csvOut").select();toast("Texto selecionado. Use Ctrl+C")});
+};
+const soDig=s=>String(s||"").replace(/\D/g,"");
+const semAcento=s=>String(s||"").normalize("NFD").replace(/[̀-ͯ]/g,"").toLowerCase();
+function perfilParecido(banco,conta,atual){
+  const c=soDig(conta),outros=S.perfis.filter(x=>x!==atual&&x.rules.length);
+  if(c.length>=4){const m=outros.find(x=>soDig(x.nome).includes(c));if(m)return m}
+  const b=semAcento(banco).replace(/^banco\s+(do\s+|da\s+)?/,"").split(/\s+/)[0];
+  return b&&b.length>=2?outros.find(x=>semAcento(x.nome).includes(b))||null:null;
+}
+let ocrCtl=null;
+const MAX_IMGS=6;
+function getSenha(){try{return localStorage.getItem("conciliador-senha")||""}catch(e){return ""}}
+$("senha").value=getSenha();
+$("senha").oninput=e=>{try{localStorage.setItem("conciliador-senha",e.target.value)}catch(x){}};
+async function paraJpeg(file,maxLado=2200){
+  const img=await createImageBitmap(file);
+  const k=Math.min(1,maxLado/Math.max(img.width,img.height));
+  const c=document.createElement("canvas");c.width=Math.round(img.width*k);c.height=Math.round(img.height*k);
+  const g=c.getContext("2d");g.fillStyle="#fff";g.fillRect(0,0,c.width,c.height);g.drawImage(img,0,0,c.width,c.height);
+  return c.toDataURL("image/jpeg",0.85).split(",")[1];
+}
+async function lerImagens(files,signal){
+  const imagens=[];for(const f of files)imagens.push({media_type:"image/jpeg",data:await paraJpeg(f)});
+  const r=await fetch("/api/ler-extrato",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({senha:getSenha(),imagens}),signal});
+  let j={};try{j=await r.json()}catch(e){}
+  if(!r.ok)throw {code:j.code||"upstream_error",message:j.erro};
+  return j;
+}
+function ocrMsg(code,message){return({senha:"Senha errada. Confira a senha de leitura acima.",sem_chave:"A chave da API não está configurada no servidor. Veja o README.",grande:"As imagens ficaram grandes demais. Envie menos páginas por vez.",cancelled:"Leitura interrompida."}[code]||message||"A leitura falhou. Tente de novo.")}
+$("img").onchange=async e=>{
+  const files=[...e.target.files];e.target.value="";if(!files.length)return;
+  const max=MAX_IMGS;
+  const st=$("ocrStatus");st.className="hint";
+  if(files.length>max){st.className="hint err";st.textContent=`Dá para ler até ${max} imagens por vez. Selecione menos páginas.`;return}
+  const anterior=S.atual,base=P();
+  let p=base,criado=false;
+  if(base.extrato.trim()){
+    p={nome:files[0].name.replace(/\.\w+$/,""),extrato:"",rules:base.rules.map(r=>[...r]),bank:base.bank,ano:base.ano,manual:{}};
+    S.perfis.push(p);S.atual=S.perfis.length-1;criado=true;render();
+  }
+  const antes=p.extrato;
+  ocrCtl=new AbortController();$("stopOcr").hidden=false;$("imgBtn").hidden=true;
+  st.textContent=`Lendo ${files.length} imagem${files.length>1?"ns":""}… isso costuma levar de 20 segundos a 1 minuto.`;
+  try{
+    const {text,truncated}=await lerImagens(files,ocrCtl.signal);
+    let limpo=text.replace(/^```\w*\n?|```$/gm,"").trim();
+    const hb=limpo.match(/^BANCO\s*\|\s*([^|\n]*)\|\s*([^|\n]*)\|\s*([^|\n]*)$/im);
+    if(hb){
+      limpo=limpo.replace(hb[0],"").trim();
+      const [banco,ag,conta]=[hb[1].trim(),hb[2].trim(),hb[3].trim()];
+      const fonte=perfilParecido(banco,conta,p);
+      if(fonte){p.rules=fonte.rules.map(r=>[...r]);p.bank=fonte.bank}
+      p.nome=`${banco} · Ag. ${ag} C/C ${conta}`;
+      p.origem=fonte?fonte.nome:"";
+    }
+    p.extrato=limpo;p.manual={};
+    if(p.nome==="Novo extrato")p.nome=files[0].name.replace(/\.\w+$/,"");
+    save();$("extratoTxt").value=p.extrato;render();irPara("lanc");window.scrollTo({top:0,behavior:"smooth"});
+    const n=parseTexto(p.extrato).tx.length;
+    st.textContent=`${n} movimentos lidos.${p.origem?` Regras e conta do banco copiadas de "${p.origem}".`:" Nenhum extrato anterior desse banco: as regras vieram do extrato que estava aberto."}${truncated?" A leitura foi cortada antes do fim: selecione menos páginas por vez.":""} Confira a conferência de saldo antes de exportar.`;
+    toast(`${n} movimentos lidos da imagem`);
+  }catch(err){
+    if(criado){S.perfis.pop();S.atual=anterior}else p.extrato=antes;
+    $("extratoTxt").value=P().extrato;render();
+    if(err?.name!=="AbortError"&&err?.code!=="cancelled"){st.className="hint err";st.textContent=ocrMsg(err?.code,err?.message)}else st.textContent="Leitura interrompida. Nada foi alterado.";
+  }finally{$("stopOcr").hidden=true;$("imgBtn").hidden=false;ocrCtl=null}
+};
+$("stopOcr").onclick=()=>ocrCtl?.abort();
+
+function baixar(nome,conteudo,tipo){const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([conteudo],{type:tipo}));a.download=nome;document.body.append(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},500)}
+$("baixarTxt").onclick=()=>{const nome=(P().nome||"extrato").replace(/[^\w\-]+/g,"_")+"_lancamentos.txt";baixar(nome,"\ufeff"+$("csvOut").value.replace(/\n/g,"\r\n"),"text/plain;charset=utf-8");toast("Arquivo baixado")};
+$("exportar").onclick=()=>{baixar("regras-conciliador.json",JSON.stringify({versao:2,plano:S.plano,perfis:S.perfis.map(({nome,rules,bank,ano})=>({nome,rules,bank,ano}))},null,2),"application/json");toast("Regras salvas em arquivo")};
+$("importar").onchange=e=>{const f=e.target.files[0];e.target.value="";if(!f)return;const rd=new FileReader();rd.onload=()=>{try{const j=JSON.parse(rd.result);if(!Array.isArray(j.plano)||!Array.isArray(j.perfis))throw 0;
+  S.plano=j.plano;j.perfis.forEach(x=>{const ex=S.perfis.find(y=>y.nome===x.nome);if(ex){ex.rules=x.rules;ex.bank=x.bank}else S.perfis.push({nome:x.nome,extrato:"",rules:x.rules,bank:x.bank,ano:x.ano||"",manual:{}})});
+  save();render();toast(`Regras de ${j.perfis.length} extrato(s) carregadas`)}catch(x){toast("Esse arquivo não é um arquivo de regras do conciliador")}};rd.readAsText(f)};
+let tt;function toast(m){const t=$("toast");t.textContent=m;t.hidden=false;clearTimeout(tt);tt=setTimeout(()=>t.hidden=true,2800)}
+render();
+</script>
+
+</body>
+</html>
